@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # Blockchain node (using Hardhat for development)
+  blockchain:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: npx hardhat node
+    ports:
+      - "8545:8545"
+    networks:
+      - digital-id-network
+
+  # API Server
+  api:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PROVIDER_URL=http://blockchain:8545
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - blockchain
+    networks:
+      - digital-id-network
+    restart: unless-stopped
+
+  # Demo Application
+  demo:
+    build:
+      context: ./demo
+      dockerfile: Dockerfile
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+    ports:
+      - "3001:80"
+    depends_on:
+      - api
+    networks:
+      - digital-id-network
+
+  # PostgreSQL Database (optional - for off-chain data)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=digitalid
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-password}
+      - POSTGRES_DB=digital_identity
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - digital-id-network
+    restart: unless-stopped
+
+  # Redis Cache (optional - for session management)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - digital-id-network
+    restart: unless-stopped
+
+  # IPFS Node (optional - for distributed storage)
+  ipfs:
+    image: ipfs/go-ipfs:latest
+    environment:
+      - IPFS_PROFILE=server
+    volumes:
+      - ipfs_staging:/export
+      - ipfs_data:/data/ipfs
+    ports:
+      - "4001:4001" # Swarm
+      - "5001:5001" # API
+      - "8080:8080" # Gateway
+    networks:
+      - digital-id-network
+
+networks:
+  digital-id-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ipfs_staging:
+  ipfs_data:
